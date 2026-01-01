@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "dev": "vite --config apps/desktop/ui/vite.config.ts",
+    "build": "tsc -b apps/desktop/ui/tsconfig.app.json && vite build --config apps/desktop/ui/vite.config.ts",
+    "lint": "eslint apps/desktop/ui --config apps/desktop/ui/eslint.config.js",
+    "preview": "vite preview --config apps/desktop/ui/vite.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

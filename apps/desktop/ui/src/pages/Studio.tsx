@@ -87,13 +87,15 @@ const Studio = () => {
               <h2 className="text-sm font-semibold text-foreground">Create Content</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Configure your output</p>
             </div>
-            <CreationControls
-              transcripts={mockTranscripts}
-              selectedTranscript={selectedTranscript}
-              onSelectTranscript={setSelectedTranscript}
-              onGenerate={handleGenerate}
-              isGenerating={isGenerating}
-            />
+            <div className="flex-1 min-h-0">
+              <CreationControls
+                transcripts={mockTranscripts}
+                selectedTranscript={selectedTranscript}
+                onSelectTranscript={setSelectedTranscript}
+                onGenerate={handleGenerate}
+                isGenerating={isGenerating}
+              />
+            </div>
           </aside>
         </div>
 
