@@ -13,6 +13,7 @@ from core.config import settings
 from api.routes import sessions
 from db.mongo.database import close_mongo_connection
 from core.storage import ensure_storage_directories
+from db.postgres.database import SessionLocal
 
 
 @asynccontextmanager
@@ -23,6 +24,29 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     print(f"🚀 Starting {settings.APP_NAME} v{settings.VERSION}")
+    
+    # CRITICAL: Verify which database we're connected to
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            "SELECT inet_server_addr(), inet_server_port(), current_database()"
+        ).fetchone()
+        print("=" * 80)
+        print("🔍 BACKEND DB IDENTITY (CRITICAL DIAGNOSTIC):")
+        print(f"   Server Address: {result[0] or 'localhost/unix-socket'}")
+        print(f"   Server Port: {result[1] or 'N/A'}")
+        print(f"   Database Name: {result[2]}")
+        print(f"   Connection String: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'N/A'}")
+        
+        # Count sessions
+        count = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        print(f"   Current Sessions Count: {count}")
+        print("=" * 80)
+    except Exception as e:
+        print(f"⚠️  Failed to query DB identity: {e}")
+    finally:
+        db.close()
+    
     print(f"📊 PostgreSQL: Connected")
     print(f"🍃 MongoDB: Ready (not actively used in V1)")
     
