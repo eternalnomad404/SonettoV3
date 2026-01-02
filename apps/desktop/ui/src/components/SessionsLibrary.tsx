@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Search, SlidersHorizontal, ChevronDown } from "lucide-react";
 import SessionCard from "./SessionCard";
 import type { Session } from "./SessionCard";
-import { fetchSessions, formatDuration, formatDate } from "@/lib/api";
+import { fetchSessions, formatDuration, formatDate, deleteSession } from "@/lib/api";
 import type { Session as APISession } from "@/lib/api";
 
 type SortOption = "date" | "name" | "duration";
@@ -16,34 +16,46 @@ const SessionsLibrary = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch sessions from backend on mount
-  useEffect(() => {
-    const loadSessions = async () => {
-      try {
-        setLoading(true);
-        const apiSessions = await fetchSessions();
-        
-        // Transform API sessions to frontend format
-        const transformedSessions: Session[] = apiSessions.map((s: APISession) => ({
-          id: s.id,
-          name: s.title,
-          duration: formatDuration(s.duration_seconds),
-          uploadDate: formatDate(s.created_at),
-          status: s.status as "ready" | "processing" | "uploaded",
-          type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" : "audio",
-          tags: s.session_type ? [s.session_type] : undefined,
-        }));
-        
-        setSessions(transformedSessions);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to load sessions:", err);
-        setError("Failed to load sessions from backend");
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Fetch sessions from backend
+  const loadSessions = async () => {
+    try {
+      setLoading(true);
+      const apiSessions = await fetchSessions();
+      
+      // Transform API sessions to frontend format
+      const transformedSessions: Session[] = apiSessions.map((s: APISession) => ({
+        id: s.id,
+        name: s.title,
+        duration: formatDuration(s.duration_seconds),
+        uploadDate: formatDate(s.created_at),
+        status: s.status as "ready" | "processing" | "uploaded",
+        type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" : "audio",
+        tags: s.session_type ? [s.session_type] : undefined,
+      }));
+      
+      setSessions(transformedSessions);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load sessions:", err);
+      setError("Failed to load sessions from backend");
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Handle delete
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteSession(id);
+      await loadSessions(); // Refresh the list
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+      alert("Failed to delete session");
+    }
+  };
+
+  // Fetch sessions on mount
+  useEffect(() => {
     loadSessions();
   }, []);
 
@@ -143,7 +155,7 @@ const SessionsLibrary = () => {
           </div>
         ) : sortedSessions.length > 0 ? (
           sortedSessions.map((session) => (
-            <SessionCard key={session.id} session={session} />
+            <SessionCard key={session.id} session={session} onDelete={handleDelete} />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">

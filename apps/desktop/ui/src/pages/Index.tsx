@@ -6,11 +6,12 @@ import UploadZone from "@/components/UploadZone";
 import SessionsLibrary from "@/components/SessionsLibrary";
 
 const Index = () => {
-  const [, setUploadedFiles] = useState<string[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const handleFileUploaded = (file: { name: string }) => {
-    setUploadedFiles((prev) => [...prev, file.name]);
+  const handleFileUploaded = () => {
+    // Trigger sessions library refresh by changing key
+    setRefreshKey(prev => prev + 1);
   };
 
   return (
@@ -46,7 +47,7 @@ const Index = () => {
 
             {/* Sessions library */}
             <section>
-              <SessionsLibrary />
+              <SessionsLibrary key={refreshKey} />
             </section>
           </div>
         </div>

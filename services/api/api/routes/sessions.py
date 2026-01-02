@@ -8,12 +8,15 @@ Keeps business logic minimal - this is data layer access only.
 from typing import List
 from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 
 from db.postgres.models import Session
 from db.postgres.deps import get_db
+from core.storage import get_original_file_path, get_audio_file_path
+from core.audio import extract_audio, get_audio_duration
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -38,6 +41,10 @@ class SessionResponse(BaseModel):
     duration_seconds: int | None
     original_file_path: str | None
     audio_file_path: str | None
+    file_name: str | None
+    file_size_bytes: int | None
+    file_type: str | None
+    audio_duration_seconds: int | None
     status: str
     created_at: datetime
     
@@ -161,3 +168,160 @@ def delete_session(
     db.delete(session)
     db.commit()
     return None
+
+
+@router.post("/upload", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+async def upload_session_file(
+    file: UploadFile = File(...),
+    title: str = File(...),
+    db: DBSession = Depends(get_db)
+):
+    """
+    Upload audio/video file and process it.
+    
+    Flow:
+    1. Create session record with status='uploaded'
+    2. Save original file to storage/original/
+    3. Extract audio using FFmpeg
+    4. Save WAV to storage/audio/
+    5. Update session with paths and status='ready' or 'failed'
+    
+    Args:
+        file: The uploaded audio/video file
+        title: Title for this session
+        db: Database session
+    
+    Returns:
+        Created session with all file paths populated
+    """
+    # Validate file was provided
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided"
+        )
+    
+    # Get file extension
+    file_extension = Path(file.filename).suffix
+    if not file_extension:
+        file_extension = ".bin"  # Fallback for files without extension
+    
+    # Read file content first
+    content = await file.read()
+    file_size = len(content)
+    
+    # Create initial session record with metadata
+    db_session = Session(
+        title=title,
+        status="uploaded",
+        file_name=file.filename,
+        file_size_bytes=file_size,
+        file_type=file.content_type or "application/octet-stream"
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    
+    session_id = str(db_session.id)
+    
+    try:
+        # Save original file
+        original_path = get_original_file_path(session_id, file_extension)
+        
+        with open(original_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Update session with original file path
+        db_session.original_file_path = str(original_path)
+        db.commit()
+        
+        # Extract audio
+        audio_path = get_audio_file_path(session_id)
+        success, message = extract_audio(original_path, audio_path)
+        
+        if success:
+            # Audio extraction successful
+            db_session.audio_file_path = str(audio_path)
+            
+            # Get audio duration
+            duration = get_audio_duration(audio_path)
+            if duration:
+                db_session.audio_duration_seconds = duration
+            
+            db_session.status = "ready"
+            db.commit()
+            db.refresh(db_session)
+            return db_session
+        else:
+            # Audio extraction failed
+            db_session.status = "failed"
+            db.commit()
+            db.refresh(db_session)
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Audio extraction failed: {message}"
+            )
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Handle unexpected errors
+        db_session.status = "failed"
+        db.commit()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File upload failed: {str(e)}"
+        )
+
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: UUID,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Delete a session and all associated files.
+    
+    Args:
+        session_id: UUID of the session to delete
+        db: Database session
+    
+    Returns:
+        204 No Content on success
+    """
+    # Get session
+    db_session = db.query(Session).filter(Session.id == session_id).first()
+    
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Delete files from disk if they exist
+    if db_session.original_file_path:
+        original_path = Path(db_session.original_file_path)
+        if original_path.exists():
+            try:
+                original_path.unlink()
+            except Exception as e:
+                # Log but don't fail - continue with deletion
+                print(f"Warning: Failed to delete original file: {e}")
+    
+    if db_session.audio_file_path:
+        audio_path = Path(db_session.audio_file_path)
+        if audio_path.exists():
+            try:
+                audio_path.unlink()
+            except Exception as e:
+                print(f"Warning: Failed to delete audio file: {e}")
+    
+    # Delete from database
+    db.delete(db_session)
+    db.commit()
+    
+    return None
+

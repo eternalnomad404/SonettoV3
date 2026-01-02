@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from core.config import settings
 from api.routes import sessions
 from db.mongo.database import close_mongo_connection
+from core.storage import ensure_storage_directories
 
 
 @asynccontextmanager
@@ -24,6 +25,9 @@ async def lifespan(app: FastAPI):
     print(f"🚀 Starting {settings.APP_NAME} v{settings.VERSION}")
     print(f"📊 PostgreSQL: Connected")
     print(f"🍃 MongoDB: Ready (not actively used in V1)")
+    
+    # Initialize storage directories
+    ensure_storage_directories()
     
     yield
     
@@ -80,3 +84,4 @@ if __name__ == "__main__":
         port=8000,
         reload=True  # Auto-reload on code changes (development only)
     )
+

@@ -11,6 +11,10 @@ export interface Session {
   duration_seconds: number | null;
   original_file_path: string | null;
   audio_file_path: string | null;
+  file_name: string | null;
+  file_size_bytes: number | null;
+  file_type: string | null;
+  audio_duration_seconds: number | null;
   status: string;
   created_at: string;
 }
@@ -39,6 +43,41 @@ export async function fetchSessionById(id: string): Promise<Session> {
   }
   
   return response.json();
+}
+
+/**
+ * Upload a new session file (audio or video)
+ */
+export async function uploadSession(file: File, title: string): Promise<Session> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("title", title);
+  
+  const response = await fetch(`${API_BASE_URL}/sessions/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Upload failed");
+  }
+  
+  return response.json();
+}
+
+/**
+ * Delete a session and all associated files
+ */
+export async function deleteSession(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+    method: "DELETE",
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Delete failed");
+  }
 }
 
 /**

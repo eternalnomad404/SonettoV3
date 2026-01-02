@@ -37,6 +37,9 @@ build
 *.sqlite3
 postgres_data
 
+# Storage (uploaded files and processed audio)
+services/api/storage/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -40,6 +40,8 @@ services:
       VERSION: 1.0.0
     ports:
       - "8000:8000"
+    volumes:
+      - storage_data:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,6 +51,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  storage_data:
     driver: local
 
 networks:

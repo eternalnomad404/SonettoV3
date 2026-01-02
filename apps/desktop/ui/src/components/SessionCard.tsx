@@ -1,4 +1,4 @@
-import { FileAudio, FileVideo, MoreHorizontal, Clock, Calendar } from "lucide-react";
+import { FileAudio, FileVideo, Trash2, Clock, Calendar } from "lucide-react";
 
 export type SessionStatus = "uploaded" | "processing" | "ready";
 
@@ -14,6 +14,7 @@ export type Session = {
 
 type SessionCardProps = {
   session: Session;
+  onDelete?: (id: string) => void;
 };
 
 const statusConfig: Record<SessionStatus, { label: string; className: string }> = {
@@ -31,9 +32,16 @@ const statusConfig: Record<SessionStatus, { label: string; className: string }> 
   },
 };
 
-const SessionCard = ({ session }: SessionCardProps) => {
+const SessionCard = ({ session, onDelete }: SessionCardProps) => {
   const status = statusConfig[session.status];
   const Icon = session.type === "audio" ? FileAudio : FileVideo;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete && confirm(`Delete "${session.name}"?`)) {
+      onDelete(session.id);
+    }
+  };
 
   return (
     <div className="group flex items-center gap-4 p-4 bg-card rounded-lg border border-border hover:border-primary/20 transition-colors sonetto-shadow">
@@ -77,8 +85,12 @@ const SessionCard = ({ session }: SessionCardProps) => {
       </span>
 
       {/* Actions */}
-      <button className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors opacity-0 group-hover:opacity-100">
-        <MoreHorizontal className="w-4 h-4" />
+      <button 
+        onClick={handleDelete}
+        className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-secondary rounded-md transition-colors opacity-0 group-hover:opacity-100"
+        title="Delete session"
+      >
+        <Trash2 className="w-4 h-4" />
       </button>
     </div>
   );
