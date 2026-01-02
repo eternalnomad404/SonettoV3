@@ -1,0 +1,56 @@
+# Sonetto - Docker Compose Configuration
+# 
+# Runs the complete stack:
+# - PostgreSQL (system of record)
+# - Backend API (FastAPI)
+# 
+# Note: MongoDB uses Atlas cloud, not local container
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: sonetto-postgres
+    environment:
+      POSTGRES_DB: SonettoV3
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sonetto-network
+
+  # Backend API
+  backend:
+    build:
+      context: ../../services/api
+      dockerfile: ../../infra/docker/Dockerfile
+    container_name: sonetto-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/SonettoV3
+      MONGO_URL: ${MONGO_URL}
+      APP_NAME: Sonetto API
+      VERSION: 1.0.0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sonetto-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sonetto-network:
+    driver: bridge

@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "vite --config apps/desktop/ui/vite.config.ts",
     "build": "tsc -b apps/desktop/ui/tsconfig.app.json && vite build --config apps/desktop/ui/vite.config.ts",
+    "build:electron": "cd apps/desktop/electron && npm run build",
+    "electron:dev": "cd apps/desktop/electron && npm run dev",
     "lint": "eslint apps/desktop/ui --config apps/desktop/ui/eslint.config.js",
-    "preview": "vite preview --config apps/desktop/ui/vite.config.ts"
+    "preview": "vite preview --config apps/desktop/ui/vite.config.ts",
+    "docker:build": "cd infra/docker && docker compose build",
+    "docker:up": "cd infra/docker && docker compose up -d",
+    "docker:down": "cd infra/docker && docker compose down",
+    "docker:logs": "cd infra/docker && docker compose logs -f"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

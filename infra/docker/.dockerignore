@@ -1,0 +1,43 @@
+# Files to exclude from Docker build context
+
+# Environment files (use build args instead)
+.env
+.env.*
+!.env.example
+
+# Dependencies (installed in Dockerfile)
+venv
+__pycache__
+*.py[cod]
+*$py.class
+
+# Development files
+*.md
+README.md
+.git
+.gitignore
+
+# Build artifacts
+dist
+build
+*.egg-info
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+tests
+
+# Editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database data
+*.db
+*.sqlite
