@@ -1,0 +1,19 @@
+# Sonetto API - Python Dependencies
+#
+# Core Framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+
+# Database - PostgreSQL
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+
+# Database - MongoDB
+pymongo==4.10.1
+
+# Configuration
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# Utilities
+python-multipart==0.0.20  # For file uploads (future)

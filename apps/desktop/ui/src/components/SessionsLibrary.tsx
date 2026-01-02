@@ -1,53 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, SlidersHorizontal, ChevronDown } from "lucide-react";
 import SessionCard from "./SessionCard";
 import type { Session } from "./SessionCard";
-
-const mockSessions: Session[] = [
-  {
-    id: "1",
-    name: "Q4 Planning Meeting Recording",
-    duration: "1h 23m",
-    uploadDate: "Dec 28, 2025",
-    status: "ready",
-    type: "video",
-    tags: ["Meeting"],
-  },
-  {
-    id: "2",
-    name: "Product Demo - Enterprise Client",
-    duration: "45m 12s",
-    uploadDate: "Dec 27, 2025",
-    status: "processing",
-    type: "video",
-  },
-  {
-    id: "3",
-    name: "Interview - Sarah Johnson",
-    duration: "32m 45s",
-    uploadDate: "Dec 26, 2025",
-    status: "ready",
-    type: "audio",
-    tags: ["Interview"],
-  },
-  {
-    id: "4",
-    name: "Weekly Standup Dec 23",
-    duration: "18m 30s",
-    uploadDate: "Dec 23, 2025",
-    status: "ready",
-    type: "audio",
-    tags: ["Meeting"],
-  },
-  {
-    id: "5",
-    name: "Customer Feedback Call",
-    duration: "52m 18s",
-    uploadDate: "Dec 22, 2025",
-    status: "uploaded",
-    type: "audio",
-  },
-];
+import { fetchSessions, formatDuration, formatDate } from "@/lib/api";
+import type { Session as APISession } from "@/lib/api";
 
 type SortOption = "date" | "name" | "duration";
 type FilterOption = "all" | "ready" | "processing" | "uploaded";
@@ -56,7 +12,40 @@ const SessionsLibrary = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("date");
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
-  const [sessions] = useState<Session[]>(mockSessions);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch sessions from backend on mount
+  useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        setLoading(true);
+        const apiSessions = await fetchSessions();
+        
+        // Transform API sessions to frontend format
+        const transformedSessions: Session[] = apiSessions.map((s: APISession) => ({
+          id: s.id,
+          name: s.title,
+          duration: formatDuration(s.duration_seconds),
+          uploadDate: formatDate(s.created_at),
+          status: s.status as "ready" | "processing" | "uploaded",
+          type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" : "audio",
+          tags: s.session_type ? [s.session_type] : undefined,
+        }));
+        
+        setSessions(transformedSessions);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to load sessions:", err);
+        setError("Failed to load sessions from backend");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSessions();
+  }, []);
 
   const filteredSessions = sessions.filter((session) => {
     const matchesSearch = session.name
@@ -141,7 +130,18 @@ const SessionsLibrary = () => {
 
       {/* Sessions list */}
       <div className="space-y-2">
-        {sortedSessions.length > 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-sm text-muted-foreground">Loading sessions...</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-sm text-red-500">{error}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Make sure the backend is running at http://localhost:8000
+            </p>
+          </div>
+        ) : sortedSessions.length > 0 ? (
           sortedSessions.map((session) => (
             <SessionCard key={session.id} session={session} />
           ))
