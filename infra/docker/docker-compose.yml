@@ -2,9 +2,8 @@
 # 
 # Runs the complete stack:
 # - PostgreSQL (system of record)
+# - MongoDB (transcription cache)
 # - Backend API (FastAPI)
-# 
-# Note: MongoDB uses Atlas cloud, not local container
 
 services:
   # PostgreSQL Database

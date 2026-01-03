@@ -353,33 +353,55 @@ async def delete_session(
 @router.post("/{session_id}/transcribe", response_model=TranscriptionResponse)
 async def transcribe_session(
     session_id: UUID,
+    regenerate: bool = False,
     db: DBSession = Depends(get_db)
 ):
     """
     Generate transcription for a session using Sarvam AI Batch API with diarization.
     
     This endpoint:
-    1. Retrieves the session from the database
-    2. Validates that the audio file exists
-    3. Calls Sarvam AI Batch API with diarization enabled
-    4. Polls for job completion with live status updates
-    5. Returns segments with timestamps and speaker labels
-    6. Saves transcription to MongoDB
+    1. Checks MongoDB for existing transcription (unless regenerate=True)
+    2. If exists in MongoDB, returns cached transcription immediately
+    3. Otherwise, generates new transcription using Sarvam Batch API
+    4. Saves to MongoDB and returns only if save succeeds
+    5. If MongoDB save fails, raises 500 error
     
     For live progress updates, connect to GET /{session_id}/transcribe/status (SSE).
     
     Args:
         session_id: UUID of the session to transcribe
+        regenerate: If True, force regeneration even if cached (default: False)
         db: Database session
         
     Returns:
-        TranscriptionResponse with segments array
+        TranscriptionResponse with segments array (only if stored in MongoDB)
         
     Raises:
         404: Session not found
         400: Session doesn't have audio file
-        500: Transcription failed
+        500: Transcription failed or MongoDB save failed
     """
+    # Check MongoDB for existing transcription first (unless regenerate=True)
+    if not regenerate:
+        try:
+            mongo_db = get_mongo_database()
+            existing = mongo_db.transcriptions.find_one({"session_id": str(session_id)})
+            
+            if existing:
+                print(f"✅ Found cached transcription for {session_id} ({existing.get('total_segments', 0)} segments)")
+                
+                # Convert MongoDB document to response format
+                from db.mongo.models import get_transcription_response
+                response_data = get_transcription_response(existing)
+                
+                return TranscriptionResponse(
+                    session_id=session_id,
+                    segments=[TranscriptSegment(**seg) for seg in response_data["segments"]],
+                    total_segments=response_data["total_segments"]
+                )
+        except Exception as e:
+            print(f"⚠️ MongoDB lookup failed: {e}")
+    
     # Get session from database
     db_session = db.query(Session).filter(Session.id == session_id).first()
     
@@ -435,27 +457,36 @@ async def transcribe_session(
             detail=f"Transcription failed: {message}"
         )
     
-    # Save transcription to MongoDB
+    # Save transcription to MongoDB - MUST succeed to return transcription
     try:
         mongo_db = get_mongo_database()
         transcription_doc = transcription_to_mongo_document(
-            session_id=session_id,
+            session_id=str(session_id),
             title=db_session.title,
             segments=segments,
             total_duration=float(db_session.audio_duration_seconds or 0)
         )
         
         # Insert or update transcription in MongoDB
-        mongo_db.transcriptions.replace_one(
+        result = mongo_db.transcriptions.replace_one(
             {"session_id": str(session_id)},
             transcription_doc,
             upsert=True
         )
         
         print(f"✅ Saved transcription for session {session_id} to MongoDB ({len(segments)} segments)")
+        
     except Exception as e:
-        # Log error but don't fail the request - transcription still worked
-        print(f"⚠️ Failed to save transcription to MongoDB: {e}")
+        print(f"❌ CRITICAL: Failed to save transcription to MongoDB: {e}")
+        transcription_status[status_key] = {
+            "step": "failed",
+            "message": f"Failed to save to database: {str(e)}",
+            "progress": 0
+        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Transcription generated but failed to save to database: {str(e)}"
+        )
     
     # Mark as completed
     transcription_status[status_key] = {
@@ -464,7 +495,7 @@ async def transcribe_session(
         "progress": 100
     }
     
-    # Return transcript segments
+    # Return transcript segments (only after successful MongoDB save)
     return TranscriptionResponse(
         session_id=session_id,
         segments=[TranscriptSegment(**seg) for seg in segments],
@@ -542,3 +573,164 @@ async def transcribe_status_stream(
         }
     )
 
+
+# Speaker Management Endpoints
+
+class SpeakerNamesUpdate(BaseModel):
+    """Schema for updating speaker names"""
+    speaker_names: dict  # {"Speaker_1": "Moderator", "Speaker_2": "Guest"}
+
+
+@router.get("/{session_id}/transcription")
+async def get_transcription(
+    session_id: UUID,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Get cached transcription from MongoDB with speaker names applied.
+    
+    Returns 404 if no transcription exists for this session.
+    """
+    try:
+        mongo_db = get_mongo_database()
+        transcription_doc = mongo_db.transcriptions.find_one({"session_id": str(session_id)})
+        
+        if not transcription_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No transcription found for session {session_id}"
+            )
+        
+        # Convert to response format with speaker names applied
+        from db.mongo.models import get_transcription_response
+        response_data = get_transcription_response(transcription_doc)
+        
+        return {
+            "session_id": str(session_id),
+            "segments": response_data["segments"],
+            "total_segments": response_data["total_segments"],
+            "speaker_names": response_data["speaker_names"],
+            "created_at": response_data["created_at"],
+            "updated_at": response_data["updated_at"]
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve transcription: {str(e)}"
+        )
+
+
+@router.put("/{session_id}/speakers")
+async def update_speaker_names(
+    session_id: UUID,
+    speaker_update: SpeakerNamesUpdate,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Update speaker names globally for a session.
+    
+    This updates the speaker_names mapping in MongoDB, which affects
+    how all segments are displayed.
+    
+    Example request body:
+    {
+        "speaker_names": {
+            "Speaker_1": "Moderator",
+            "Speaker_2": "Guest"
+        }
+    }
+    """
+    try:
+        mongo_db = get_mongo_database()
+        
+        # Update speaker_names and updated_at timestamp
+        result = mongo_db.transcriptions.update_one(
+            {"session_id": str(session_id)},
+            {
+                "$set": {
+                    "speaker_names": speaker_update.speaker_names,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No transcription found for session {session_id}"
+            )
+        
+        print(f"✅ Updated speaker names for session {session_id}: {speaker_update.speaker_names}")
+        
+        return {
+            "session_id": str(session_id),
+            "speaker_names": speaker_update.speaker_names,
+            "updated_at": datetime.utcnow()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update speaker names: {str(e)}"
+        )
+
+
+@router.put("/{session_id}/segments/{segment_index}/speaker")
+async def update_segment_speaker(
+    session_id: UUID,
+    segment_index: int,
+    new_speaker: str,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Update the speaker for a specific segment.
+    
+    Args:
+        session_id: Session UUID
+        segment_index: Index of the segment to update (0-based)
+        new_speaker: New speaker ID (e.g., "Speaker_1", "Speaker_2")
+    
+    Example:
+    PUT /sessions/{session_id}/segments/3/speaker?new_speaker=Speaker_2
+    """
+    try:
+        mongo_db = get_mongo_database()
+        
+        # Update specific segment's speaker_id
+        result = mongo_db.transcriptions.update_one(
+            {"session_id": str(session_id)},
+            {
+                "$set": {
+                    f"segments.{segment_index}.speaker_id": new_speaker,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No transcription found for session {session_id}"
+            )
+        
+        print(f"✅ Updated segment {segment_index} speaker to {new_speaker} for session {session_id}")
+        
+        return {
+            "session_id": str(session_id),
+            "segment_index": segment_index,
+            "new_speaker": new_speaker,
+            "updated_at": datetime.utcnow()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update segment speaker: {str(e)}"
+        )

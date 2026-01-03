@@ -1,14 +1,7 @@
 """
 MongoDB client initialization.
 
-This module only establishes a connection to MongoDB.
-No collections are created yet - this is groundwork for future AI/transcript features.
-
-Future use cases:
-- Storing transcripts and their versions
-- AI-generated outputs
-- RAG (Retrieval-Augmented Generation) data
-- Chunked text for embeddings
+This module establishes connection to MongoDB Atlas for transcription persistence.
 """
 
 from pymongo import MongoClient
@@ -30,14 +23,15 @@ def get_mongo_client() -> MongoClient:
     global mongo_client
     
     if mongo_client is None:
-        mongo_client = MongoClient(
-            settings.MONGO_URL,
-            serverSelectionTimeoutMS=5000,  # 5 second timeout
-            connectTimeoutMS=10000,         # 10 second connection timeout
-        )
+        mongo_client = MongoClient(settings.MONGO_URL, serverSelectionTimeoutMS=5000)
+        
         # Test connection
-        mongo_client.admin.command('ping')
-        print(f"✓ Connected to MongoDB at {settings.MONGO_URL}")
+        try:
+            result = mongo_client.admin.command('ping')
+            print(f"✅ MongoDB: Connected successfully")
+        except Exception as e:
+            print(f"⚠️  MongoDB: Connection test failed - {e}")
+            raise
     
     return mongo_client
 
@@ -48,10 +42,6 @@ def get_mongo_database(db_name: str = "sonetto") -> Database:
     
     Args:
         db_name: Name of the database (default: "sonetto")
-    
-    Usage:
-        db = get_mongo_database()
-        # Future: db.transcripts.insert_one({...})
     """
     global mongo_db
     
@@ -70,4 +60,4 @@ def close_mongo_connection():
     global mongo_client
     if mongo_client is not None:
         mongo_client.close()
-        print("✓ MongoDB connection closed")
+        print("✅ MongoDB: Connection closed")

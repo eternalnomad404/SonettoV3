@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     - MONGO_URL: MongoDB connection string (optional for now)
     """
     
+    # MongoDB
+    MONGO_URL: str
+    
     # PostgreSQL
     DATABASE_URL: str
-    
-    # MongoDB (initialized but not actively used in V1)
-    MONGO_URL: str = "mongodb://localhost:27017"
     
     # Sarvam AI
     SARVAM_API_KEY: str
