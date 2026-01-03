@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Play, Loader2, FileText, Sparkles, RefreshCw } from "lucide-react";
+import { Play, Loader2, FileText, Sparkles, RefreshCw, Copy } from "lucide-react";
 import type { Recording } from "@/pages/Transcripts";
 import TranscriptEditor from "./TranscriptEditor";
 import AIAssistantPanel from "./AIAssistantPanel";
@@ -162,6 +162,34 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
     // In a real app, this would call an AI endpoint
   };
 
+  const handleCopyTranscript = async () => {
+    if (!transcript || !recording) return;
+
+    try {
+      // Format transcript in a clean, readable way
+      const formattedTranscript = transcript
+        .map((segment) => {
+          const speakerName = segment.speaker;
+          const timestamp = segment.timestamp;
+          const text = segment.text;
+          
+          return `${speakerName} [${timestamp}]\n${text}`;
+        })
+        .join("\n\n");
+
+      // Add header with recording name
+      const fullText = `Transcript: ${recording.name}\n${"-".repeat(50)}\n\n${formattedTranscript}`;
+
+      await navigator.clipboard.writeText(fullText);
+      
+      // Optional: Show a brief success feedback
+      alert("Transcript copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy transcript:", err);
+      alert("Failed to copy transcript. Please try again.");
+    }
+  };
+
   // Empty state - no recording selected
   if (!recording) {
     return (
@@ -261,21 +289,28 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleGenerate(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-muted-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-all hover:opacity-90"
+            style={{ backgroundColor: '#7E2A5A' }}
             title="Regenerate transcription"
           >
             <RefreshCw className="w-4 h-4" />
             Regenerate
           </button>
           <button
+            onClick={handleCopyTranscript}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-all hover:opacity-90"
+            style={{ backgroundColor: '#7E2A5A' }}
+            title="Copy transcript"
+          >
+            <Copy className="w-4 h-4" />
+            Copy
+          </button>
+          <button
             onClick={() => setShowAssistant(!showAssistant)}
-            className={`
-              inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors
-              ${showAssistant
-                ? "bg-accent text-accent-foreground"
-                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              }
-            `}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+              showAssistant ? "opacity-90" : "hover:opacity-90"
+            }`}
+            style={{ backgroundColor: '#7E2A5A', color: 'white' }}
           >
             <Sparkles className="w-4 h-4" />
             AI Assistant
