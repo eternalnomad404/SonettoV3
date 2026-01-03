@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { X, Sparkles, Send, Eraser, Type, Minimize2, MessageSquare, Users, Edit2, Check } from "lucide-react";
 
 type AIAssistantPanelProps = {
@@ -15,11 +15,14 @@ const quickActions = [
   { id: "clarity", label: "Improve clarity", icon: MessageSquare, description: "Enhance readability" },
 ];
 
-const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }: AIAssistantPanelProps) => {
+const AIAssistantPanel = React.memo(({ onAction, onClose, speakerNames, onUpdateSpeakers }: AIAssistantPanelProps) => {
   const [customPrompt, setCustomPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
   const [speakerEditValue, setSpeakerEditValue] = useState("");
+
+  // Memoize speaker entries to prevent re-rendering when speakerNames object changes but content is same
+  const speakerEntries = useMemo(() => Object.entries(speakerNames), [speakerNames]);
 
   const handleQuickAction = (actionId: string) => {
     setIsProcessing(true);
@@ -43,6 +46,11 @@ const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }:
     setSpeakerEditValue(currentName);
   };
 
+  const handleCancelEdit = () => {
+    setEditingSpeaker(null);
+    setSpeakerEditValue("");
+  };
+
   const handleSaveSpeaker = (speakerId: string) => {
     const newName = speakerEditValue.trim();
     if (newName && newName !== speakerNames[speakerId]) {
@@ -55,14 +63,20 @@ const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }:
     setSpeakerEditValue("");
   };
 
+  const handleSpeakerBlur = () => {
+    // Delay to allow button clicks to register first
+    setTimeout(() => {
+      handleCancelEdit();
+    }, 150);
+  };
+
   const handleSpeakerKeyDown = (e: React.KeyboardEvent, speakerId: string) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleSaveSpeaker(speakerId);
     }
     if (e.key === "Escape") {
-      setEditingSpeaker(null);
-      setSpeakerEditValue("");
+      handleCancelEdit();
     }
   };
 
@@ -91,7 +105,7 @@ const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }:
             <p className="text-xs text-muted-foreground">Manage Speakers</p>
           </div>
           <div className="space-y-2">
-            {Object.entries(speakerNames).map(([speakerId, speakerName]) => {
+            {speakerEntries.map(([speakerId, speakerName]) => {
               const isEditing = editingSpeaker === speakerId;
               return (
                 <div
@@ -105,17 +119,33 @@ const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }:
                         value={speakerEditValue}
                         onChange={(e) => setSpeakerEditValue(e.target.value)}
                         onKeyDown={(e) => handleSpeakerKeyDown(e, speakerId)}
-                        onBlur={() => handleSaveSpeaker(speakerId)}
+                        onBlur={handleSpeakerBlur}
                         autoFocus
-                        className="flex-1 px-2 py-1 text-sm bg-accent border border-primary/20 rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="flex-1 px-2 py-1 text-sm bg-accent border border-primary/20 rounded focus:outline-none focus:ring-2 focus:ring-ring min-w-0"
                         placeholder="Enter name..."
                       />
-                      <button
-                        onClick={() => handleSaveSpeaker(speakerId)}
-                        className="p-1 text-primary hover:bg-accent rounded transition-colors"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSaveSpeaker(speakerId);
+                          }}
+                          className="p-1.5 text-primary hover:bg-accent rounded transition-colors"
+                          title="Save"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleCancelEdit();
+                          }}
+                          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
+                          title="Cancel"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -196,6 +226,8 @@ const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }:
       )}
     </aside>
   );
-};
+});
+
+AIAssistantPanel.displayName = "AIAssistantPanel";
 
 export default AIAssistantPanel;

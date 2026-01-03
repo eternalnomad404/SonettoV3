@@ -24,32 +24,21 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
   const [showAssistant, setShowAssistant] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Dynamically calculate all unique speakers - use useMemo to prevent recalculation
-  const allUniqueSpeakers = useMemo(() => {
-    if (!transcript) return new Set<string>();
-    return new Set(transcript.map((seg) => seg.speaker));
-  }, [transcript]);
-
-  // Update speaker names only when transcript speakers actually change
-  useEffect(() => {
-    if (!transcript || allUniqueSpeakers.size === 0) return;
-
-    // Check if we need to add any new speakers
-    let hasNewSpeakers = false;
-    const mergedSpeakers: Record<string, string> = { ...speakerNames };
+  // Show ONLY speakers currently in transcript (filter out old ones)
+  // Apply custom names from speakerNames mapping where available
+  const currentSpeakerNames = useMemo(() => {
+    if (!transcript) return {};
     
-    allUniqueSpeakers.forEach((speaker) => {
-      if (!mergedSpeakers[speaker]) {
-        mergedSpeakers[speaker] = speaker;
-        hasNewSpeakers = true;
-      }
+    const result: Record<string, string> = {};
+    const uniqueSpeakers = new Set(transcript.map((seg) => seg.speaker));
+    
+    uniqueSpeakers.forEach((speaker) => {
+      // Use custom name if exists, otherwise use the speaker ID
+      result[speaker] = speakerNames[speaker] || speaker;
     });
     
-    // Only update if there are actually new speakers
-    if (hasNewSpeakers) {
-      setSpeakerNames(mergedSpeakers);
-    }
-  }, [allUniqueSpeakers]);
+    return result;
+  }, [transcript, speakerNames]);
 
   // Auto-load cached transcription when recording changes
   useEffect(() => {
@@ -367,7 +356,7 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
           <AIAssistantPanel
             onAction={handleAIAction}
             onClose={() => setShowAssistant(false)}
-            speakerNames={speakerNames}
+            speakerNames={currentSpeakerNames}
             onUpdateSpeakers={handleUpdateSpeakers}
           />
         )}
