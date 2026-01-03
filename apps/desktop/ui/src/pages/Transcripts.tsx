@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AppSidebar from "@/components/AppSidebar";
 import MobileHeader from "@/components/MobileHeader";
 import MobileSidebar from "@/components/MobileSidebar";
 import RecordingSelector from "@/components/transcripts/RecordingSelector";
 import TranscriptWorkspace from "@/components/transcripts/TranscriptWorkspace";
+import { fetchSessions, formatDuration, formatDate } from "@/lib/api";
+import type { Session as APISession } from "@/lib/api";
 
 export type Recording = {
   id: string;
@@ -14,46 +16,41 @@ export type Recording = {
   type: "audio" | "video";
 };
 
-const mockRecordings: Recording[] = [
-  {
-    id: "1",
-    name: "Q4 Planning Meeting Recording",
-    duration: "1h 23m",
-    uploadDate: "Dec 28, 2025",
-    transcriptionStatus: "ready",
-    type: "video",
-  },
-  {
-    id: "2",
-    name: "Product Demo - Enterprise Client",
-    duration: "45m 12s",
-    uploadDate: "Dec 27, 2025",
-    transcriptionStatus: "none",
-    type: "video",
-  },
-  {
-    id: "3",
-    name: "Interview - Sarah Johnson",
-    duration: "32m 45s",
-    uploadDate: "Dec 26, 2025",
-    transcriptionStatus: "ready",
-    type: "audio",
-  },
-  {
-    id: "4",
-    name: "Weekly Standup Dec 23",
-    duration: "18m 30s",
-    uploadDate: "Dec 23, 2025",
-    transcriptionStatus: "none",
-    type: "audio",
-  },
-];
-
 const Transcripts = () => {
-  const [recordings] = useState<Recording[]>(mockRecordings);
+  const [recordings, setRecordings] = useState<Recording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showRecordingSelector, setShowRecordingSelector] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch real sessions from backend on mount
+  useEffect(() => {
+    const loadRecordings = async () => {
+      try {
+        setLoading(true);
+        const apiSessions = await fetchSessions();
+        
+        // Transform API sessions to Recording format
+        const transformedRecordings: Recording[] = apiSessions.map((s: APISession) => ({
+          id: s.id,
+          name: s.title,
+          duration: formatDuration(s.audio_duration_seconds || s.duration_seconds),
+          uploadDate: formatDate(s.created_at),
+          transcriptionStatus: "none" as const, // No transcription implemented yet
+          type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" as const : "audio" as const,
+        }));
+        
+        setRecordings(transformedRecordings);
+      } catch (err) {
+        console.error("Failed to load recordings:", err);
+        setRecordings([]); // Fallback to empty array on error
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRecordings();
+  }, []);
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -101,26 +98,36 @@ const Transcripts = () => {
           {/* Mobile Recording dropdown */}
           {showRecordingSelector && (
             <div className="mt-2 bg-popover border border-border rounded-lg shadow-lg max-h-64 overflow-auto">
-              {recordings.map((recording) => (
-                <button
-                  key={recording.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedRecording(recording);
-                    setShowRecordingSelector(false);
-                  }}
-                  className={`w-full px-3 py-3 text-left border-b border-border last:border-b-0 transition-colors ${
-                    selectedRecording?.id === recording.id ? "bg-accent" : "hover:bg-secondary"
-                  }`}
-                >
-                  <p className="font-medium text-foreground text-sm truncate">{recording.name}</p>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    <span>{recording.duration}</span>
-                    <span>•</span>
-                    <span>{recording.uploadDate}</span>
-                  </div>
-                </button>
-              ))}
+              {loading ? (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  Loading recordings...
+                </div>
+              ) : recordings.length === 0 ? (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No recordings found
+                </div>
+              ) : (
+                recordings.map((recording) => (
+                  <button
+                    key={recording.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRecording(recording);
+                      setShowRecordingSelector(false);
+                    }}
+                    className={`w-full px-3 py-3 text-left border-b border-border last:border-b-0 transition-colors ${
+                      selectedRecording?.id === recording.id ? "bg-accent" : "hover:bg-secondary"
+                    }`}
+                  >
+                    <p className="font-medium text-foreground text-sm truncate">{recording.name}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>{recording.duration}</span>
+                      <span>•</span>
+                      <span>{recording.uploadDate}</span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
