@@ -47,15 +47,18 @@ const UploadZone = ({ onFileUploaded }: UploadZoneProps) => {
       setErrorMessage("");
 
       try {
-        const progressInterval = setInterval(() => {
-          setUploadingFile((prev) => {
-            if (!prev || prev.progress >= 90) return prev;
-            return { ...prev, progress: prev.progress + Math.random() * 10 };
-          });
-        }, 300);
-
-        const response = await uploadSession(file, file.name.replace(/\.[^/.]+$/, ""));
-        clearInterval(progressInterval);
+        // Real progress tracking - no fake timers
+        const response = await uploadSession(
+          file, 
+          file.name.replace(/\.[^/.]+$/, ""),
+          (progress) => {
+            // Update with actual upload progress (0-100%)
+            setUploadingFile((prev) => {
+              if (!prev) return prev;
+              return { ...prev, progress };
+            });
+          }
+        );
 
         if (response.status === "ready") {
           const completedFile = { ...uploadedFile, progress: 100, status: "ready" as const };

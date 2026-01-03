@@ -26,7 +26,7 @@ const SessionsLibrary = () => {
       const transformedSessions: Session[] = apiSessions.map((s: APISession) => ({
         id: s.id,
         name: s.title,
-        duration: formatDuration(s.duration_seconds),
+        duration: formatDuration(s.audio_duration_seconds || s.duration_seconds),
         uploadDate: formatDate(s.created_at),
         status: s.status as "ready" | "processing" | "uploaded",
         type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" : "audio",

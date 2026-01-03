@@ -247,6 +247,7 @@ async def upload_session_file(
             duration = get_audio_duration(audio_path)
             if duration:
                 db_session.audio_duration_seconds = duration
+                db_session.duration_seconds = duration  # Also populate main duration field
             
             db_session.status = "ready"
             db.commit()

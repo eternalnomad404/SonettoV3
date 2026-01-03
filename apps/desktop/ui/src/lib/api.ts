@@ -46,24 +46,60 @@ export async function fetchSessionById(id: string): Promise<Session> {
 }
 
 /**
- * Upload a new session file (audio or video)
+ * Upload a new session file (audio or video) with real progress tracking
  */
-export async function uploadSession(file: File, title: string): Promise<Session> {
+export async function uploadSession(
+  file: File, 
+  title: string,
+  onProgress?: (progress: number) => void
+): Promise<Session> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("title", title);
   
-  const response = await fetch(`${API_BASE_URL}/sessions/upload`, {
-    method: "POST",
-    body: formData,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    // Track upload progress (actual bytes uploaded)
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percentComplete = (event.loaded / event.total) * 100;
+        onProgress(percentComplete);
+      }
+    });
+    
+    // Handle completion
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (error) {
+          reject(new Error('Failed to parse response'));
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.detail || 'Upload failed'));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.statusText}`));
+        }
+      }
+    });
+    
+    // Handle errors
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'));
+    });
+    
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload cancelled'));
+    });
+    
+    // Send request
+    xhr.open('POST', `${API_BASE_URL}/sessions/upload`);
+    xhr.send(formData);
   });
-  
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(errorData.detail || "Upload failed");
-  }
-  
-  return response.json();
 }
 
 /**
