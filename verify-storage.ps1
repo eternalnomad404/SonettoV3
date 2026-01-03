@@ -5,6 +5,18 @@
 .DESCRIPTION
     Shows where files are stored on disk (inside Docker container)
     and allows you to copy files out for verification
+
+.NOTES
+    **Purpose**: Debug tool for manual verification of audio extraction quality
+    **Retention Rationale**: 
+    - Useful for inspecting Docker container storage when debugging FFmpeg issues
+    - Helps verify 16kHz mono WAV conversion is working correctly
+    - Provides ready-to-use docker cp commands for extracting files
+    - Not referenced in CI/CD or production automation
+    - Minimal maintenance burden (59 lines, pure PowerShell)
+    
+    **Usage**: Run `.\verify-storage.ps1` from project root when investigating
+               audio quality issues or verifying FFmpeg configuration changes
 #>
 
 Write-Host "`n=== Sonetto V3 Storage Verification ===" -ForegroundColor Cyan

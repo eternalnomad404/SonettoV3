@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # MongoDB (initialized but not actively used in V1)
     MONGO_URL: str = "mongodb://localhost:27017"
     
+    # Sarvam AI
+    SARVAM_API_KEY: str
+    
     # App metadata
     APP_NAME: str = "Sonetto API"
     VERSION: str = "1.0.0"

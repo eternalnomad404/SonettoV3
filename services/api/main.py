@@ -74,7 +74,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
+
+# Increase request timeout for large file uploads (2-4 hour videos)
+# Note: Uvicorn timeout is configured via command line, this is FastAPI-level config
 
 # Include routers
 app.include_router(sessions.router)

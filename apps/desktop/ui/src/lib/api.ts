@@ -19,6 +19,19 @@ export interface Session {
   created_at: string;
 }
 
+export interface TranscriptSegment {
+  id: string;
+  speaker: string;
+  timestamp: string;
+  text: string;
+}
+
+export interface TranscriptionResponse {
+  session_id: string;
+  segments: TranscriptSegment[];
+  total_segments: number;
+}
+
 /**
  * Fetch all sessions from the backend
  */
@@ -114,6 +127,23 @@ export async function deleteSession(id: string): Promise<void> {
     const errorData = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(errorData.detail || "Delete failed");
   }
+}
+
+/**
+ * Generate transcription for a session using Sarvam AI
+ */
+export async function generateTranscript(sessionId: string): Promise<TranscriptSegment[]> {
+  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/transcribe`, {
+    method: "POST",
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Transcription failed");
+  }
+  
+  const data: TranscriptionResponse = await response.json();
+  return data.segments;
 }
 
 /**

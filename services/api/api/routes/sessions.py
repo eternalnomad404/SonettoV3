@@ -17,6 +17,7 @@ from db.postgres.models import Session
 from db.postgres.deps import get_db
 from core.storage import get_original_file_path, get_audio_file_path
 from core.audio import extract_audio, get_audio_duration
+from core.transcription import transcribe_audio
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -60,6 +61,21 @@ class SessionUpdate(BaseModel):
     original_file_path: str | None = None
     audio_file_path: str | None = None
     status: str | None = None
+
+
+class TranscriptSegment(BaseModel):
+    """Schema for a transcript segment"""
+    id: str
+    speaker: str
+    timestamp: str
+    text: str
+
+
+class TranscriptionResponse(BaseModel):
+    """Schema for transcription response"""
+    session_id: UUID
+    segments: List[TranscriptSegment]
+    total_segments: int
 
 
 # Routes
@@ -147,29 +163,6 @@ def update_session(
     return session
 
 
-@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(
-    session_id: UUID,
-    db: DBSession = Depends(get_db)
-):
-    """
-    Delete a session.
-    
-    Returns 204 No Content on success.
-    """
-    session = db.query(Session).filter(Session.id == session_id).first()
-    
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session {session_id} not found"
-        )
-    
-    db.delete(session)
-    db.commit()
-    return None
-
-
 @router.post("/upload", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def upload_session_file(
     file: UploadFile = File(...),
@@ -206,16 +199,12 @@ async def upload_session_file(
     if not file_extension:
         file_extension = ".bin"  # Fallback for files without extension
     
-    # Read file content first
-    content = await file.read()
-    file_size = len(content)
-    
-    # Create initial session record with metadata
+    # Create initial session record (size will be updated after streaming)
     db_session = Session(
         title=title,
         status="uploaded",
         file_name=file.filename,
-        file_size_bytes=file_size,
+        file_size_bytes=0,  # Will be updated after streaming
         file_type=file.content_type or "application/octet-stream"
     )
     db.add(db_session)
@@ -223,13 +212,39 @@ async def upload_session_file(
     db.refresh(db_session)
     
     session_id = str(db_session.id)
+    file_size = 0
     
     try:
-        # Save original file
+        # Save original file with STREAMING (not buffering entire file in RAM)
         original_path = get_original_file_path(session_id, file_extension)
         
+        # Stream file in 10MB chunks to support 2-4 hour videos (5-20GB+)
+        CHUNK_SIZE = 10 * 1024 * 1024  # 10MB chunks
+        MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024  # 20GB limit (4-hour 1080p video)
+        
         with open(original_path, "wb") as buffer:
-            buffer.write(content)
+            while chunk := await file.read(CHUNK_SIZE):
+                file_size += len(chunk)
+                
+                # Enforce file size limit to prevent disk exhaustion
+                if file_size > MAX_FILE_SIZE:
+                    # Clean up partial file
+                    buffer.close()
+                    if original_path.exists():
+                        original_path.unlink()
+                    
+                    db.delete(db_session)
+                    db.commit()
+                    
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File size exceeds maximum limit of {MAX_FILE_SIZE // (1024**3)}GB. Please upload a smaller file."
+                    )
+                
+                buffer.write(chunk)
+        
+        # Update file size in database
+        db_session.file_size_bytes = file_size
         
         # Update session with original file path
         db_session.original_file_path = str(original_path)
@@ -325,4 +340,72 @@ async def delete_session(
     db.commit()
     
     return None
+
+
+@router.post("/{session_id}/transcribe", response_model=TranscriptionResponse)
+async def transcribe_session(
+    session_id: UUID,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Generate transcription for a session using Sarvam AI.
+    
+    This endpoint:
+    1. Retrieves the session from the database
+    2. Validates that the audio file exists
+    3. Calls Sarvam AI Speech-to-Text API
+    4. Transforms the response into transcript segments
+    5. Returns segments with timestamps and speaker labels
+    
+    Args:
+        session_id: UUID of the session to transcribe
+        db: Database session
+        
+    Returns:
+        TranscriptionResponse with segments array
+        
+    Raises:
+        404: Session not found
+        400: Session doesn't have audio file
+        500: Transcription failed
+    """
+    # Get session from database
+    db_session = db.query(Session).filter(Session.id == session_id).first()
+    
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Validate audio file exists
+    if not db_session.audio_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session does not have an audio file. Upload a file first."
+        )
+    
+    audio_path = Path(db_session.audio_file_path)
+    
+    if not audio_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audio file not found at: {audio_path}"
+        )
+    
+    # Call Sarvam AI transcription service
+    success, message, segments = transcribe_audio(audio_path)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Transcription failed: {message}"
+        )
+    
+    # Return transcript segments
+    return TranscriptionResponse(
+        session_id=session_id,
+        segments=[TranscriptSegment(**seg) for seg in segments],
+        total_segments=len(segments)
+    )
 

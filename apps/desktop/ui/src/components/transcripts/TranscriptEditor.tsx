@@ -14,9 +14,9 @@ type TranscriptEditorProps = {
 };
 
 const speakerColors: Record<string, string> = {
-  "Sarah Johnson": "text-primary",
-  "Michael Chen": "text-primary",
-  "Emily Rodriguez": "text-primary",
+  "Sarah Johnson": "text-primary font-medium",
+  "Michael Chen": "text-primary font-medium",
+  "Emily Rodriguez": "text-primary font-medium",
 };
 
 const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) => {
@@ -63,7 +63,7 @@ const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) 
             >
               {/* Speaker and timestamp */}
               <div className="flex items-center gap-2 mb-2">
-                <div className={`flex items-center gap-1.5 text-sm font-medium ${colorClass}`}>
+                <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#7E2A5A' }}>
                   <User className="w-4 h-4" />
                   {segment.speaker}
                 </div>

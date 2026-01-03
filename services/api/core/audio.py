@@ -79,12 +79,13 @@ def extract_audio(input_path: Path, output_path: Path) -> Tuple[bool, str]:
             str(output_path)             # Output file
         ]
         
-        # Run FFmpeg
+        # Run FFmpeg with extended timeout for 2-4 hour videos
+        # Processing time: ~5-15 minutes for 4-hour 1080p video
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            timeout=1800  # 30 minute timeout (was 5 minutes)
         )
         
         if result.returncode == 0:
@@ -94,7 +95,7 @@ def extract_audio(input_path: Path, output_path: Path) -> Tuple[bool, str]:
             return False, f"FFmpeg failed: {error_msg}"
             
     except subprocess.TimeoutExpired:
-        return False, "Audio extraction timed out (>5 minutes)"
+        return False, "Audio extraction timed out (>30 minutes)"
     except FileNotFoundError:
         return False, "FFmpeg not installed or not in PATH"
     except Exception as e:
