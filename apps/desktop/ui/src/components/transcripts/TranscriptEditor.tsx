@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User } from "lucide-react";
+import { User, Edit2, Check, X as XIcon } from "lucide-react";
 
 type TranscriptSegment = {
   id: string;
@@ -11,17 +11,14 @@ type TranscriptSegment = {
 type TranscriptEditorProps = {
   segments: TranscriptSegment[] | null;
   onUpdateSegment: (id: string, newText: string) => void;
+  onUpdateSpeaker: (segmentId: string, newSpeaker: string) => void;
 };
 
-const speakerColors: Record<string, string> = {
-  "Sarah Johnson": "text-primary font-medium",
-  "Michael Chen": "text-primary font-medium",
-  "Emily Rodriguez": "text-primary font-medium",
-};
-
-const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) => {
+const TranscriptEditor = ({ segments, onUpdateSegment, onUpdateSpeaker }: TranscriptEditorProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
+  const [speakerEditValue, setSpeakerEditValue] = useState("");
 
   const handleStartEdit = (segment: TranscriptSegment) => {
     setEditingId(segment.id);
@@ -47,6 +44,34 @@ const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) 
     }
   };
 
+  const handleStartEditSpeaker = (segment: TranscriptSegment) => {
+    setEditingSpeakerId(segment.id);
+    setSpeakerEditValue(segment.speaker);
+  };
+
+  const handleSaveSpeaker = () => {
+    if (editingSpeakerId && speakerEditValue.trim()) {
+      onUpdateSpeaker(editingSpeakerId, speakerEditValue.trim());
+      setEditingSpeakerId(null);
+      setSpeakerEditValue("");
+    }
+  };
+
+  const handleCancelSpeakerEdit = () => {
+    setEditingSpeakerId(null);
+    setSpeakerEditValue("");
+  };
+
+  const handleSpeakerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveSpeaker();
+    }
+    if (e.key === "Escape") {
+      handleCancelSpeakerEdit();
+    }
+  };
+
   if (!segments) return null;
 
   return (
@@ -54,7 +79,7 @@ const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) 
       <div className="space-y-4">
         {segments.map((segment) => {
           const isEditing = editingId === segment.id;
-          const colorClass = speakerColors[segment.speaker] || "bg-secondary text-secondary-foreground";
+          const isEditingSpeaker = editingSpeakerId === segment.id;
 
           return (
             <div
@@ -63,10 +88,41 @@ const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) 
             >
               {/* Speaker and timestamp */}
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#7E2A5A' }}>
-                  <User className="w-4 h-4" />
-                  {segment.speaker}
-                </div>
+                {isEditingSpeaker ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={speakerEditValue}
+                      onChange={(e) => setSpeakerEditValue(e.target.value)}
+                      onKeyDown={handleSpeakerKeyDown}
+                      autoFocus
+                      className="px-2 py-1 text-sm font-medium bg-accent border border-primary/20 rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                      style={{ color: '#7E2A5A' }}
+                    />
+                    <button
+                      onClick={handleSaveSpeaker}
+                      className="p-1 text-primary hover:bg-accent rounded transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={handleCancelSpeakerEdit}
+                      className="p-1 text-muted-foreground hover:bg-secondary rounded transition-colors"
+                    >
+                      <XIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-1.5 text-sm font-medium cursor-pointer hover:bg-secondary/50 px-2 py-1 rounded transition-colors group/speaker"
+                    style={{ color: '#7E2A5A' }}
+                    onClick={() => handleStartEditSpeaker(segment)}
+                  >
+                    <User className="w-4 h-4" />
+                    {segment.speaker}
+                    <Edit2 className="w-3 h-3 opacity-0 group-hover/speaker:opacity-100 transition-opacity ml-1" />
+                  </div>
+                )}
                 <span className="text-xs text-muted-foreground">
                   {segment.timestamp}
                 </span>
@@ -98,7 +154,7 @@ const TranscriptEditor = ({ segments, onUpdateSegment }: TranscriptEditorProps) 
 
       {/* Editor hint */}
       <p className="text-center text-xs text-muted-foreground mt-8">
-        Click any text to edit • Press Enter to save • Escape to cancel
+        Click any text to edit • Click speaker names to rename • Press Enter to save • Escape to cancel
       </p>
     </div>
   );

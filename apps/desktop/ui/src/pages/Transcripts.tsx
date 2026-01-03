@@ -36,7 +36,7 @@ const Transcripts = () => {
           name: s.title,
           duration: formatDuration(s.audio_duration_seconds || s.duration_seconds),
           uploadDate: formatDate(s.created_at),
-          transcriptionStatus: "none" as const, // No transcription implemented yet
+          transcriptionStatus: "none" as const, // Will be updated when transcriptions are loaded
           type: s.session_type === "video" || s.original_file_path?.includes('.mp4') ? "video" as const : "audio" as const,
         }));
         
@@ -51,6 +51,17 @@ const Transcripts = () => {
 
     loadRecordings();
   }, []);
+
+  // Handle transcription status changes
+  const handleTranscriptionStatusChange = (recordingId: string, status: "ready" | "none") => {
+    setRecordings((prev) =>
+      prev.map((recording) =>
+        recording.id === recordingId
+          ? { ...recording, transcriptionStatus: status }
+          : recording
+      )
+    );
+  };
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -145,7 +156,10 @@ const Transcripts = () => {
 
           {/* Main workspace */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            <TranscriptWorkspace recording={selectedRecording} />
+            <TranscriptWorkspace
+              recording={selectedRecording}
+              onTranscriptionStatusChange={handleTranscriptionStatusChange}
+            />
           </div>
         </div>
       </main>

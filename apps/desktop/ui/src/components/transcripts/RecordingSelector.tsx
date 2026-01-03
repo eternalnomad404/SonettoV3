@@ -11,7 +11,7 @@ type RecordingSelectorProps = {
 const statusBadge = {
   none: { label: "No transcript", className: "bg-secondary text-muted-foreground text-xs px-2 py-1 rounded" },
   generating: { label: "Generating", className: "bg-yellow-50 text-yellow-700 text-xs px-2 py-1 rounded border border-yellow-200" },
-  ready: { label: "Ready", className: "bg-primary/10 text-primary text-xs px-2 py-1 rounded border border-primary/20" },
+  ready: { label: "Ready", className: "bg-green-50 text-green-700 text-xs px-2 py-1 rounded border border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800" },
 };
 
 const RecordingSelector = ({ recordings, selectedRecording, onSelect }: RecordingSelectorProps) => {

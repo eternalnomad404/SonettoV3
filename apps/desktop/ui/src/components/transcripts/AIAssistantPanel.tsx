@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { X, Sparkles, Send, Eraser, Type, Minimize2, MessageSquare } from "lucide-react";
+import { X, Sparkles, Send, Eraser, Type, Minimize2, MessageSquare, Users, Edit2, Check } from "lucide-react";
 
 type AIAssistantPanelProps = {
   onAction: (action: string) => void;
   onClose: () => void;
+  speakerNames: Record<string, string>;
+  onUpdateSpeakers: (speakers: Record<string, string>) => void;
 };
 
 const quickActions = [
@@ -13,9 +15,11 @@ const quickActions = [
   { id: "clarity", label: "Improve clarity", icon: MessageSquare, description: "Enhance readability" },
 ];
 
-const AIAssistantPanel = ({ onAction, onClose }: AIAssistantPanelProps) => {
+const AIAssistantPanel = ({ onAction, onClose, speakerNames, onUpdateSpeakers }: AIAssistantPanelProps) => {
   const [customPrompt, setCustomPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
+  const [speakerEditValue, setSpeakerEditValue] = useState("");
 
   const handleQuickAction = (actionId: string) => {
     setIsProcessing(true);
@@ -31,6 +35,34 @@ const AIAssistantPanel = ({ onAction, onClose }: AIAssistantPanelProps) => {
       onAction(customPrompt);
       setCustomPrompt("");
       setTimeout(() => setIsProcessing(false), 1500);
+    }
+  };
+
+  const handleStartEditSpeaker = (speakerId: string, currentName: string) => {
+    setEditingSpeaker(speakerId);
+    setSpeakerEditValue(currentName);
+  };
+
+  const handleSaveSpeaker = (speakerId: string) => {
+    const newName = speakerEditValue.trim();
+    if (newName && newName !== speakerNames[speakerId]) {
+      onUpdateSpeakers({
+        ...speakerNames,
+        [speakerId]: newName,
+      });
+    }
+    setEditingSpeaker(null);
+    setSpeakerEditValue("");
+  };
+
+  const handleSpeakerKeyDown = (e: React.KeyboardEvent, speakerId: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveSpeaker(speakerId);
+    }
+    if (e.key === "Escape") {
+      setEditingSpeaker(null);
+      setSpeakerEditValue("");
     }
   };
 
@@ -51,25 +83,83 @@ const AIAssistantPanel = ({ onAction, onClose }: AIAssistantPanelProps) => {
       </div>
 
       {/* Quick actions */}
-      <div className="flex-1 overflow-auto p-4">
-        <p className="text-xs text-muted-foreground mb-3">Quick actions</p>
-        <div className="space-y-2">
-          {quickActions.map((action) => (
-            <button
-              key={action.id}
-              onClick={() => handleQuickAction(action.id)}
-              disabled={isProcessing}
-              className="w-full flex items-start gap-3 p-3 text-left bg-background border border-border rounded-lg hover:border-primary/30 hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                <action.icon className="w-4 h-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{action.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{action.description}</p>
-              </div>
-            </button>
-          ))}
+      <div className="flex-1 overflow-auto p-4 space-y-6">
+        {/* Speaker Management Section */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-3.5 h-3.5 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Manage Speakers</p>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(speakerNames).map(([speakerId, speakerName]) => {
+              const isEditing = editingSpeaker === speakerId;
+              return (
+                <div
+                  key={speakerId}
+                  className="flex items-center gap-2 p-2 bg-background border border-border rounded-lg"
+                >
+                  {isEditing ? (
+                    <>
+                      <input
+                        type="text"
+                        value={speakerEditValue}
+                        onChange={(e) => setSpeakerEditValue(e.target.value)}
+                        onKeyDown={(e) => handleSpeakerKeyDown(e, speakerId)}
+                        onBlur={() => handleSaveSpeaker(speakerId)}
+                        autoFocus
+                        className="flex-1 px-2 py-1 text-sm bg-accent border border-primary/20 rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                        placeholder="Enter name..."
+                      />
+                      <button
+                        onClick={() => handleSaveSpeaker(speakerId)}
+                        className="p-1 text-primary hover:bg-accent rounded transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm text-foreground truncate">
+                        {speakerName}
+                      </span>
+                      <button
+                        onClick={() => handleStartEditSpeaker(speakerId, speakerName)}
+                        className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Rename speakers globally across all segments
+          </p>
+        </div>
+
+        {/* Quick Actions Section */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-3">Quick actions</p>
+          <div className="space-y-2">
+            {quickActions.map((action) => (
+              <button
+                key={action.id}
+                onClick={() => handleQuickAction(action.id)}
+                disabled={isProcessing}
+                className="w-full flex items-start gap-3 p-3 text-left bg-background border border-border rounded-lg hover:border-primary/30 hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                  <action.icon className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{action.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{action.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -30,6 +30,9 @@ export interface TranscriptionResponse {
   session_id: string;
   segments: TranscriptSegment[];
   total_segments: number;
+  speaker_names?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /**
@@ -132,8 +135,12 @@ export async function deleteSession(id: string): Promise<void> {
 /**
  * Generate transcription for a session using Sarvam AI
  */
-export async function generateTranscript(sessionId: string): Promise<TranscriptSegment[]> {
-  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/transcribe`, {
+export async function generateTranscript(sessionId: string, regenerate: boolean = false): Promise<TranscriptSegment[]> {
+  const url = regenerate
+    ? `${API_BASE_URL}/sessions/${sessionId}/transcribe?regenerate=true`
+    : `${API_BASE_URL}/sessions/${sessionId}/transcribe`;
+    
+  const response = await fetch(url, {
     method: "POST",
   });
   
@@ -144,6 +151,66 @@ export async function generateTranscript(sessionId: string): Promise<TranscriptS
   
   const data: TranscriptionResponse = await response.json();
   return data.segments;
+}
+
+/**
+ * Get cached transcription from MongoDB (does not generate)
+ */
+export async function getTranscription(sessionId: string): Promise<TranscriptionResponse | null> {
+  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/transcription`);
+  
+  if (response.status === 404) {
+    return null; // No transcription exists
+  }
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Failed to fetch transcription");
+  }
+  
+  return response.json();
+}
+
+/**
+ * Update speaker names for a session
+ */
+export async function updateSpeakerNames(
+  sessionId: string,
+  speakerNames: Record<string, string>
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/speakers`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ speaker_names: speakerNames }),
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Failed to update speaker names");
+  }
+}
+
+/**
+ * Update speaker for a specific segment
+ */
+export async function updateSegmentSpeaker(
+  sessionId: string,
+  segmentIndex: number,
+  newSpeaker: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/sessions/${sessionId}/segments/${segmentIndex}/speaker?new_speaker=${encodeURIComponent(newSpeaker)}`,
+    {
+      method: "PUT",
+    }
+  );
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || "Failed to update segment speaker");
+  }
 }
 
 /**
