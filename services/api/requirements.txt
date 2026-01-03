@@ -18,3 +18,4 @@ python-dotenv==1.0.1
 # Utilities
 python-multipart==0.0.20  # For file uploads (future)
 requests==2.32.3  # For Sarvam AI API calls
+sarvamai==0.1.22  # Sarvam AI Python SDK for batch API

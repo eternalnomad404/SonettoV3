@@ -5,22 +5,30 @@ CRUD operations for the sessions table.
 Keeps business logic minimal - this is data layer access only.
 """
 
+import json
+import asyncio
 from typing import List
 from uuid import UUID
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 
 from db.postgres.models import Session
 from db.postgres.deps import get_db
+from db.mongo.database import get_mongo_database
+from db.mongo.models import transcription_to_mongo_document
 from core.storage import get_original_file_path, get_audio_file_path
 from core.audio import extract_audio, get_audio_duration
 from core.transcription import transcribe_audio
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+# Global dict to store transcription status for active jobs
+transcription_status = {}
 
 
 # Pydantic schemas for request/response validation
@@ -348,14 +356,17 @@ async def transcribe_session(
     db: DBSession = Depends(get_db)
 ):
     """
-    Generate transcription for a session using Sarvam AI.
+    Generate transcription for a session using Sarvam AI Batch API with diarization.
     
     This endpoint:
     1. Retrieves the session from the database
     2. Validates that the audio file exists
-    3. Calls Sarvam AI Speech-to-Text API
-    4. Transforms the response into transcript segments
+    3. Calls Sarvam AI Batch API with diarization enabled
+    4. Polls for job completion with live status updates
     5. Returns segments with timestamps and speaker labels
+    6. Saves transcription to MongoDB
+    
+    For live progress updates, connect to GET /{session_id}/transcribe/status (SSE).
     
     Args:
         session_id: UUID of the session to transcribe
@@ -393,19 +404,141 @@ async def transcribe_session(
             detail=f"Audio file not found at: {audio_path}"
         )
     
-    # Call Sarvam AI transcription service
-    success, message, segments = transcribe_audio(audio_path)
+    # Initialize status tracking
+    status_key = str(session_id)
+    transcription_status[status_key] = {
+        "step": "starting",
+        "message": "Initializing transcription...",
+        "progress": 0
+    }
+    
+    # Status callback for transcription progress
+    def update_status(step: str, message: str, progress: int):
+        transcription_status[status_key] = {
+            "step": step,
+            "message": message,
+            "progress": progress
+        }
+        print(f"📊 [{session_id}] {step}: {message} ({progress}%)")
+    
+    # Call Sarvam AI Batch transcription service with status callback
+    success, message, segments = transcribe_audio(audio_path, status_callback=update_status)
     
     if not success:
+        transcription_status[status_key] = {
+            "step": "failed",
+            "message": message,
+            "progress": 0
+        }
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Transcription failed: {message}"
         )
+    
+    # Save transcription to MongoDB
+    try:
+        mongo_db = get_mongo_database()
+        transcription_doc = transcription_to_mongo_document(
+            session_id=session_id,
+            title=db_session.title,
+            segments=segments,
+            total_duration=float(db_session.audio_duration_seconds or 0)
+        )
+        
+        # Insert or update transcription in MongoDB
+        mongo_db.transcriptions.replace_one(
+            {"session_id": str(session_id)},
+            transcription_doc,
+            upsert=True
+        )
+        
+        print(f"✅ Saved transcription for session {session_id} to MongoDB ({len(segments)} segments)")
+    except Exception as e:
+        # Log error but don't fail the request - transcription still worked
+        print(f"⚠️ Failed to save transcription to MongoDB: {e}")
+    
+    # Mark as completed
+    transcription_status[status_key] = {
+        "step": "completed",
+        "message": f"Transcription complete: {len(segments)} segments",
+        "progress": 100
+    }
     
     # Return transcript segments
     return TranscriptionResponse(
         session_id=session_id,
         segments=[TranscriptSegment(**seg) for seg in segments],
         total_segments=len(segments)
+    )
+
+
+@router.get("/{session_id}/transcribe/status")
+async def transcribe_status_stream(
+    session_id: UUID,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Stream live transcription status updates via Server-Sent Events (SSE).
+    
+    Use this endpoint to get real-time progress updates while transcription is running.
+    The stream will continue until transcription completes or fails.
+    
+    Example frontend usage:
+    ```javascript
+    const eventSource = new EventSource(`/api/sessions/${sessionId}/transcribe/status`);
+    eventSource.onmessage = (event) => {
+        const status = JSON.parse(event.data);
+        // status = { step: "processing", message: "Processing audio...", progress: 45 }
+        updateProgressBar(status.progress);
+        updateStatusMessage(status.message);
+    };
+    eventSource.addEventListener('error', () => eventSource.close());
+    ```
+    """
+    db_session = db.query(Session).filter(Session.id == session_id).first()
+    
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    async def event_generator():
+        status_key = str(session_id)
+        last_status = None
+        
+        while True:
+            # Get current status
+            current_status = transcription_status.get(status_key, {
+                "step": "waiting",
+                "message": "Waiting for transcription to start...",
+                "progress": 0
+            })
+            
+            # Only send if status changed
+            if current_status != last_status:
+                # Send SSE event
+                yield f"data: {json.dumps(current_status)}\\n\\n"
+                last_status = current_status
+            
+            # Check if completed or failed
+            if current_status.get("step") in ["completed", "failed"]:
+                break
+            
+            # Wait before checking again
+            await asyncio.sleep(0.5)
+        
+        # Clean up status after completion
+        if status_key in transcription_status:
+            del transcription_status[status_key]
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
     )
 
