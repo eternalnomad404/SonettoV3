@@ -72,6 +72,14 @@ const TranscriptEditor = ({ segments, onUpdateSegment, onUpdateSpeaker }: Transc
     }
   };
 
+  // Cancel edit when clicking outside (blur event)
+  const handleSpeakerBlur = () => {
+    // Small delay to allow check button click to register first
+    setTimeout(() => {
+      handleCancelSpeakerEdit();
+    }, 150);
+  };
+
   if (!segments) return null;
 
   return (
@@ -95,18 +103,25 @@ const TranscriptEditor = ({ segments, onUpdateSegment, onUpdateSpeaker }: Transc
                       value={speakerEditValue}
                       onChange={(e) => setSpeakerEditValue(e.target.value)}
                       onKeyDown={handleSpeakerKeyDown}
+                      onBlur={handleSpeakerBlur}
                       autoFocus
                       className="px-2 py-1 text-sm font-medium bg-accent border border-primary/20 rounded focus:outline-none focus:ring-2 focus:ring-ring"
                       style={{ color: '#7E2A5A' }}
                     />
                     <button
-                      onClick={handleSaveSpeaker}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur event
+                        handleSaveSpeaker();
+                      }}
                       className="p-1 text-primary hover:bg-accent rounded transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={handleCancelSpeakerEdit}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur event
+                        handleCancelSpeakerEdit();
+                      }}
                       className="p-1 text-muted-foreground hover:bg-secondary rounded transition-colors"
                     >
                       <XIcon className="w-3.5 h-3.5" />

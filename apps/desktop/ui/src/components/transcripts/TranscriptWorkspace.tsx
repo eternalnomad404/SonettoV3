@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Play, Loader2, FileText, Sparkles, RefreshCw, Copy } from "lucide-react";
 import type { Recording } from "@/pages/Transcripts";
 import TranscriptEditor from "./TranscriptEditor";
@@ -24,38 +24,61 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
   const [showAssistant, setShowAssistant] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Dynamically calculate all unique speakers - use useMemo to prevent recalculation
+  const allUniqueSpeakers = useMemo(() => {
+    if (!transcript) return new Set<string>();
+    return new Set(transcript.map((seg) => seg.speaker));
+  }, [transcript]);
+
+  // Update speaker names only when transcript speakers actually change
+  useEffect(() => {
+    if (!transcript || allUniqueSpeakers.size === 0) return;
+
+    // Check if we need to add any new speakers
+    let hasNewSpeakers = false;
+    const mergedSpeakers: Record<string, string> = { ...speakerNames };
+    
+    allUniqueSpeakers.forEach((speaker) => {
+      if (!mergedSpeakers[speaker]) {
+        mergedSpeakers[speaker] = speaker;
+        hasNewSpeakers = true;
+      }
+    });
+    
+    // Only update if there are actually new speakers
+    if (hasNewSpeakers) {
+      setSpeakerNames(mergedSpeakers);
+    }
+  }, [allUniqueSpeakers]);
+
   // Auto-load cached transcription when recording changes
   useEffect(() => {
     let isMounted = true;
     
     const loadCachedTranscription = async () => {
       if (!recording) {
-        setTranscript(null);
-        setSpeakerNames({});
-        setError(null);
-        setShowAssistant(false);
+        // Batch all state updates together
+        if (isMounted) {
+          setTranscript(null);
+          setSpeakerNames({});
+          setError(null);
+          setShowAssistant(false);
+          setIsLoading(false);
+        }
         return;
       }
 
-      // Use a small delay to prevent showing loading state for fast fetches
-      const loadingTimeout = setTimeout(() => {
-        if (isMounted) {
-          setIsLoading(true);
-        }
-      }, 150);
-
-      setError(null);
-
       try {
+        // Start fetching immediately without showing loading state
         const cachedTranscription = await getTranscription(recording.id);
-        
-        clearTimeout(loadingTimeout);
         
         if (!isMounted) return;
         
         if (cachedTranscription) {
+          // Batch all state updates in a single render cycle
           setTranscript(cachedTranscription.segments);
           setSpeakerNames(cachedTranscription.speaker_names || {});
+          setError(null);
           setIsLoading(false);
           
           // Notify parent that this recording has a transcription
@@ -63,15 +86,17 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
             onTranscriptionStatusChange(recording.id, "ready");
           }
         } else {
+          // Batch state updates for no transcript case
           setTranscript(null);
           setSpeakerNames({});
+          setError(null);
           setIsLoading(false);
         }
       } catch (err) {
-        clearTimeout(loadingTimeout);
         if (!isMounted) return;
         
         console.error("Error loading cached transcription:", err);
+        // Batch error state updates
         setTranscript(null);
         setSpeakerNames({});
         setIsLoading(false);
@@ -114,13 +139,13 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
     }
   };
 
-  const handleUpdateSegment = (id: string, newText: string) => {
+  const handleUpdateSegment = useCallback((id: string, newText: string) => {
     setTranscript((prev) =>
       prev?.map((seg) => (seg.id === id ? { ...seg, text: newText } : seg)) ?? null
     );
-  };
+  }, []);
 
-  const handleUpdateSpeaker = async (segmentId: string, newSpeaker: string) => {
+  const handleUpdateSpeaker = useCallback(async (segmentId: string, newSpeaker: string) => {
     if (!recording) return;
 
     const segmentIndex = transcript?.findIndex((seg) => seg.id === segmentId);
@@ -129,40 +154,48 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
     try {
       await updateSegmentSpeaker(recording.id, segmentIndex, newSpeaker);
       
-      // Update local state
+      // Batch state updates
       setTranscript((prev) =>
         prev?.map((seg) => (seg.id === segmentId ? { ...seg, speaker: newSpeaker } : seg)) ?? null
       );
+      
+      setSpeakerNames((prev) => {
+        if (!prev[newSpeaker]) {
+          return { ...prev, [newSpeaker]: newSpeaker };
+        }
+        return prev;
+      });
     } catch (err) {
       console.error("Error updating segment speaker:", err);
       alert("Failed to update speaker name");
     }
-  };
+  }, [recording, transcript]);
 
-  const handleUpdateSpeakers = async (newSpeakerNames: Record<string, string>) => {
+  const handleUpdateSpeakers = useCallback(async (newSpeakerNames: Record<string, string>) => {
     if (!recording) return;
 
     try {
       await updateSpeakerNames(recording.id, newSpeakerNames);
-      setSpeakerNames(newSpeakerNames);
       
       // Reload transcript to get updated speaker names
       const freshData = await getTranscription(recording.id);
       if (freshData) {
+        // Batch both updates
         setTranscript(freshData.segments);
+        setSpeakerNames(newSpeakerNames);
       }
     } catch (err) {
       console.error("Error updating speaker names:", err);
       alert("Failed to update speaker names");
     }
-  };
+  }, [recording]);
 
-  const handleAIAction = (action: string) => {
+  const handleAIAction = useCallback((action: string) => {
     console.log("AI Action:", action);
     // In a real app, this would call an AI endpoint
-  };
+  }, []);
 
-  const handleCopyTranscript = async () => {
+  const handleCopyTranscript = useCallback(async () => {
     if (!transcript || !recording) return;
 
     try {
@@ -188,7 +221,7 @@ const TranscriptWorkspace = ({ recording, onTranscriptionStatusChange }: Transcr
       console.error("Failed to copy transcript:", err);
       alert("Failed to copy transcript. Please try again.");
     }
-  };
+  }, [transcript, recording]);
 
   // Empty state - no recording selected
   if (!recording) {
